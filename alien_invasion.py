@@ -19,7 +19,8 @@ class AlienInvasion:
         pygame.init()
 
         self.game_active = False
-        self.game_over = False
+        self.game_over = True
+        self.game_first_start = True # TODO: could be done in a better logic
         self.blurred_screen = None
 
         self.settings = Settings()
@@ -35,8 +36,8 @@ class AlienInvasion:
         self.ship = Ship(self)
         self.bullets = pygame.sprite.Group()
         self.aliens = pygame.sprite.Group()
-        self.pause_menu = Menu(self, "Play")
         self.stats = GameStats(self)
+        self.pause_menu = Menu(self)
 
         self._load_highscore()
         self.sb = Scoreboard(self)
@@ -71,6 +72,8 @@ class AlienInvasion:
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mouse_pose = pygame.mouse.get_pos()
                 self._check_play_button(mouse_pose)
+                self._check_inc_button(mouse_pose)
+                self._check_dec_button(mouse_pose)
 
     def _check_keydown_events(self, event):
         if event.key == pygame.K_RIGHT:
@@ -98,16 +101,46 @@ class AlienInvasion:
             self.ship.moving_left = False
 
     def _check_play_button(self, mouse_pose):
-        button_clicked = self.pause_menu.button.rect.collidepoint(mouse_pose)
+        button_clicked = self.pause_menu.play_button.rect.collidepoint(mouse_pose)
         if button_clicked and not self.game_active:
-            if self.game_over:
+            if self.game_over and not self.game_first_start:
                 self._restart_game()
             else:
+                if self.game_first_start:
+                    self.game_over = False
                 self._resume_game()
+
+    def _check_inc_button(self, mouse_pose):
+        button_clicked = self.pause_menu.inc_level_button.rect.collidepoint(mouse_pose)
+        if button_clicked and not self.game_active:
+            if self.game_over:
+                self._increment_level()
+                self.pause_menu.prep_level(self.stats.level)
+
+    def _check_dec_button(self, mouse_pose):
+            button_clicked = self.pause_menu.dec_level_button.rect.collidepoint(mouse_pose)
+            if button_clicked and not self.game_active:
+                if self.game_over:
+                    self._decrement_level()
+                    self.pause_menu.prep_level(self.stats.level)
+
+    def _increment_level(self):
+        self.stats.level += 1
+        self.sb.prep_level()
+
+        self.settings.increase_speed()
+
+    def _decrement_level(self):
+        if self.stats.level > 1:
+            self.stats.level -= 1
+            self.sb.prep_level()
+
+            self.settings.decrement_speed()
 
     def _restart_game(self):
         self.game_active = True
         self.game_over = False
+        self.game_first_start = False
         self.blurred_screen = None
 
         self.settings.initialize_dynamic_settings()
@@ -127,6 +160,7 @@ class AlienInvasion:
     def _resume_game(self):
         self.blurred_screen = None
         self.game_active = True
+        self.game_first_start = False
         pygame.mouse.set_visible(False)
 
     def _pause_game(self):
@@ -197,7 +231,7 @@ class AlienInvasion:
         if not self.game_active:
             self._blur_fg()
             self._render_sb_info()
-            self.pause_menu.draw()
+            self.pause_menu.draw(self.game_over)
 
         pygame.display.flip()
 
@@ -266,10 +300,7 @@ class AlienInvasion:
             self.bullets.empty()
             self._create_fleet()
 
-            self.stats.level += 1
-            self.sb.prep_level()
-
-            self.settings.increase_speed()
+            self._increment_level()
 
     def _ship_hit(self):
         if self.stats.ship_left > 0:

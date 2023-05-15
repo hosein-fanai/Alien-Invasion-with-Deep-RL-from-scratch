@@ -34,3 +34,10 @@ class Settings:
         self.alien_speed *= self.speed_scale
 
         self.alien_points = int(self.alien_points * self.score_scale)
+
+    def decrement_speed(self):
+        self.ship_speed /= self.speed_scale
+        self.bullet_speed /= self.speed_scale
+        self.alien_speed /= self.speed_scale
+
+        self.alien_points = int(self.alien_points / self.score_scale)
