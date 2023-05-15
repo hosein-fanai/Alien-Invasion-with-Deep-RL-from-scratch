@@ -2,6 +2,7 @@ import pygame
 
 import sys
 import time
+import struct
 
 from settings import Settings
 from game_stats import GameStats
@@ -34,9 +35,13 @@ class AlienInvasion:
         self.ship = Ship(self)
         self.bullets = pygame.sprite.Group()
         self.aliens = pygame.sprite.Group()
-        self.stats = GameStats(self)
-        self.sb = Scoreboard(self)
         self.pause_menu = Menu(self, "Play")
+        self.stats = GameStats(self)
+
+        self._load_highscore()
+        self.sb = Scoreboard(self)
+
+        self._create_sb_info()
 
         self._create_fleet()
 
@@ -57,6 +62,7 @@ class AlienInvasion:
     def _check_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                self._save_highscore()
                 sys.exit()
             elif event.type == pygame.KEYDOWN:
                 self._check_keydown_events(event)
@@ -72,6 +78,7 @@ class AlienInvasion:
         elif event.key == pygame.K_LEFT:
             self.ship.moving_left = True
         elif event.key == pygame.K_q:
+                self._save_highscore()
                 sys.exit()
         elif event.key == pygame.K_SPACE:
             if not self.game_active:
@@ -145,6 +152,35 @@ class AlienInvasion:
         surf = pygame.transform.smoothscale(surf, surf_size)
 
         self.blurred_screen = surf
+    
+    def _create_sb_info(self):
+        info = [
+            "HP",
+            "Highscore",
+            "Score",
+            "Level"
+        ]
+        poses = [
+            (self.sb.ships.sprites()[-1].rect.x+70, self.sb.ships.sprites()[-1].rect.y+5),
+            (self.sb.high_score_image_rect.x+30, self.sb.high_score_image_rect.y+35),
+            (self.sb.score_image_rect.x-250, self.sb.score_image_rect.y+5),
+            (self.sb.level_image_rect.x-100, self.sb.level_image_rect.y)
+        ]
+        font = pygame.font.SysFont(None, 40)
+
+        self.sb_info = []
+        for msg, pos in zip(info, poses):
+            msg_image =  font.render(msg, True, (0, 0, 0), self.settings.menu_bg_color)
+            msg_image_rect = msg_image.get_rect()
+            msg_image_rect.x, msg_image_rect.y = pos
+
+            self.sb_info.append((msg_image, msg_image_rect))
+
+    def _render_sb_info(self):
+        for info, info_rect in self.sb_info:
+            self.screen.blit(info, info_rect)
+            # pygame.draw.rect(self.screen, (0, 0, 0), info_rect, width=2)
+            pass
 
     def _update_screen(self):
         self.screen.fill(self.settings.bg_color)
@@ -160,6 +196,7 @@ class AlienInvasion:
 
         if not self.game_active:
             self._blur_fg()
+            self._render_sb_info()
             self.pause_menu.draw()
 
         pygame.display.flip()
@@ -256,6 +293,19 @@ class AlienInvasion:
             if alien.rect.bottom >= self.settings.screen_dims[1]:
                 self._ship_hit()
                 break
+    
+    def _load_highscore(self):
+        try:
+            with open("profile", "rb") as file:
+                binary = file.read()
+                self.stats.high_score = struct.unpack('i', binary)[0]
+        except:
+            print("No profile file detected!")
+
+    def _save_highscore(self):
+        highscore = struct.pack('i', self.stats.high_score)
+        with open("profile", "wb") as file:
+            file.write(highscore)
 
 
 if __name__ == "__main__":
