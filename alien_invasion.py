@@ -6,7 +6,7 @@ import time
 from settings import Settings
 from game_stats import GameStats
 from scoreboard import Scoreboard
-from button import Button
+from menu import Menu
 from ship import Ship
 from bullet import Bullet
 from alien import Alien
@@ -18,6 +18,8 @@ class AlienInvasion:
         pygame.init()
 
         self.game_active = False
+        self.game_over = False
+        self.blurred_screen = None
 
         self.settings = Settings()
         self.screen = pygame.display.set_mode(
@@ -34,7 +36,7 @@ class AlienInvasion:
         self.aliens = pygame.sprite.Group()
         self.stats = GameStats(self)
         self.sb = Scoreboard(self)
-        self.button = Button(self, "Play")
+        self.pause_menu = Menu(self, "Play")
 
         self._create_fleet()
 
@@ -72,7 +74,15 @@ class AlienInvasion:
         elif event.key == pygame.K_q:
                 sys.exit()
         elif event.key == pygame.K_SPACE:
+            if not self.game_active:
+                self._resume_game()
+                return
             self._fire_bullet()
+        elif event.key == pygame.K_ESCAPE:
+            self._pause_game()
+        elif event.key == pygame.K_p:
+            if not self.game_active:
+                self._resume_game()
 
     def _check_keyup_events(self, event):
         if event.key == pygame.K_RIGHT:
@@ -81,23 +91,60 @@ class AlienInvasion:
             self.ship.moving_left = False
 
     def _check_play_button(self, mouse_pose):
-        button_clicked = self.button.rect.collidepoint(mouse_pose)
+        button_clicked = self.pause_menu.button.rect.collidepoint(mouse_pose)
         if button_clicked and not self.game_active:
-            self.game_active = True
+            if self.game_over:
+                self._restart_game()
+            else:
+                self._resume_game()
 
-            self.settings.initialize_dynamic_settings()
-            self.stats.reset_stats()
-            self.sb.prep_score()
-            self.sb.prep_level()
-            self.sb.prep_ships()
+    def _restart_game(self):
+        self.game_active = True
+        self.game_over = False
+        self.blurred_screen = None
 
-            self.bullets.empty()
-            self.aliens.empty()
+        self.settings.initialize_dynamic_settings()
+        self.stats.reset_stats()
+        self.sb.prep_score()
+        self.sb.prep_level()
+        self.sb.prep_ships()
 
-            self._create_fleet()
-            self.ship.center_ship()
+        self.bullets.empty()
+        self.aliens.empty()
 
-            pygame.mouse.set_visible(False)
+        self._create_fleet()
+        self.ship.center_ship()
+
+        pygame.mouse.set_visible(False)
+
+    def _resume_game(self):
+        self.blurred_screen = None
+        self.game_active = True
+        pygame.mouse.set_visible(False)
+
+    def _pause_game(self):
+        self.game_active = False
+        pygame.mouse.set_visible(True)
+
+    def _blur_fg(self):
+        if not self.blurred_screen:
+            self._save_blurred_screen()
+
+        self.screen.blit(self.blurred_screen, self.screen_rect)
+
+    def _save_blurred_screen(self):
+        blur_sf = pygame.Surface(self.screen.get_size())
+        blur_sf.set_alpha(210)
+        blur_sf.fill((35, 35, 35))
+        self.screen.blit(blur_sf, (0, 0))
+
+        scale = 1 / 4
+        surf_size = self.screen.get_size()
+        scale_size = (int(surf_size[0]*scale), int(surf_size[1]*scale))
+        surf = pygame.transform.smoothscale(self.screen, scale_size)
+        surf = pygame.transform.smoothscale(surf, surf_size)
+
+        self.blurred_screen = surf
 
     def _update_screen(self):
         self.screen.fill(self.settings.bg_color)
@@ -112,7 +159,8 @@ class AlienInvasion:
         self.sb.draw_score()
 
         if not self.game_active:
-            self.button.draw_button()
+            self._blur_fg()
+            self.pause_menu.draw()
 
         pygame.display.flip()
 
@@ -200,6 +248,7 @@ class AlienInvasion:
             time.sleep(0.5)
         else:
             self.game_active = False
+            self.game_over = True
             pygame.mouse.set_visible(True)
 
     def _check_aliens_bottom(self):
