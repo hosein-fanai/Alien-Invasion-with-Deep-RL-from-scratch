@@ -19,8 +19,9 @@ class Menu:
         self._render_guides()
 
     def draw(self):
-        pygame.draw.rect(self.screen, self.settings.bg_color, self.rect)
+        pygame.draw.rect(self.screen, self.settings.menu_bg_color, self.rect)
         pygame.draw.rect(self.screen, (0, 135, 0), self.rect, width=10)
+        pygame.draw.rect(self.screen, (0, 0, 0), self.rect, width=3)
 
         self.button.draw_button()
 
@@ -42,7 +43,7 @@ class Menu:
 
         self.guides = []
         for guide_msg, guide_pos in zip(guides_msgs, guides_poses):
-            guide_image = self.font.render(guide_msg, True, (0, 0, 0), self.settings.bg_color)
+            guide_image = self.font.render(guide_msg, True, (0, 0, 0), self.settings.menu_bg_color)
             guide_image_rect = guide_image.get_rect()
             guide_image_rect.topleft = guide_pos
             
