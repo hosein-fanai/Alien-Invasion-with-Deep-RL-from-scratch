@@ -24,6 +24,9 @@ class AlienInvasion:
         self.blurred_screen = None
         self.manually_changed_level = False
 
+        icon = pygame.image.load("ai.ico")
+        pygame.display.set_icon(icon)
+
         self.settings = Settings()
         self.screen = pygame.display.set_mode(
             self.settings.screen_dims,

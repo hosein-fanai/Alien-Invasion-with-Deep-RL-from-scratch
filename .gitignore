@@ -1,3 +1,5 @@
 __pycache__
-images
+#images
 build
+#dist
+build.zip
