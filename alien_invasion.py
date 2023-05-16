@@ -22,6 +22,7 @@ class AlienInvasion:
         self.game_over = True
         self.game_first_start = True # TODO: could be done in a better logic
         self.blurred_screen = None
+        self.manually_changed_level = False
 
         self.settings = Settings()
         self.screen = pygame.display.set_mode(
@@ -117,12 +118,17 @@ class AlienInvasion:
                 self._increment_level()
                 self.pause_menu.prep_level(self.stats.level)
 
+                self.manually_changed_level = True
+
     def _check_dec_button(self, mouse_pose):
             button_clicked = self.pause_menu.dec_level_button.rect.collidepoint(mouse_pose)
             if button_clicked and not self.game_active:
                 if self.game_over:
                     self._decrement_level()
                     self.pause_menu.prep_level(self.stats.level)
+
+                    if self.stats.level == 1:
+                        self.manually_changed_level = False
 
     def _increment_level(self):
         self.stats.level += 1
@@ -334,9 +340,10 @@ class AlienInvasion:
             print("No profile file detected!")
 
     def _save_highscore(self):
-        highscore = struct.pack('i', self.stats.high_score)
-        with open("profile", "wb") as file:
-            file.write(highscore)
+        if not self.manually_changed_level:
+            highscore = struct.pack('i', self.stats.high_score)
+            with open("profile", "wb") as file:
+                file.write(highscore)
 
 
 if __name__ == "__main__":
