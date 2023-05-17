@@ -28,10 +28,10 @@ bdist_msi_options = {
 
 setup(
     name="Alien Invasion",
-    version="1.0.0",
+    version="1.0.1",
     description="A simple game written in pygame from scratch by EchineF.",
     author_email="hosein.fanai@gmail.com",
-    download_url="https://github.com/hosein-fanai/Alien-Invasion-with-Deep-RL-from-scratch/dist/Alien Invasion-1.0.0-win64.msi",
+    download_url="https://github.com/hosein-fanai/Alien-Invasion-with-Deep-RL-from-scratch/dist/Alien Invasion-1.0.1-win64.msi",
     options = {
         "build_exe": build_options,
         "bdist_msi": bdist_msi_options,
