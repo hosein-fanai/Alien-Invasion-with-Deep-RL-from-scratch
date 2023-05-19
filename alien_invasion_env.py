@@ -8,12 +8,14 @@ from matplotlib import pyplot as plt
 
 import random
 
+import time
+
 from alien_invasion import AlienInvasion
 
 
 class AlienInvasionEnv(AlienInvasion):
 
-    def __init__(self, mode="human"):
+    def __init__(self, preprocess_obs=False, render_type="gray_scale"):
         # super().__init__()
         # self.game_active = True
         # self.game_over = False
@@ -29,8 +31,11 @@ class AlienInvasionEnv(AlienInvasion):
         #     "alien point multiplier": self.settings.alien_points,
         # }
 
+        # self.mode = mode
+        self.preprocess_obs = preprocess_obs
+        self.render_type = render_type
+
         self.action = 0
-        self.mode = mode
 
     def _run_game(self):
         while True:
@@ -42,7 +47,18 @@ class AlienInvasionEnv(AlienInvasion):
 
             self._update_screen()
 
-            yield self.render(self.mode)
+            yield self.render(mode=self.mode)
+
+    def _run_game2(self):
+        self._check_inputs()
+
+        self.ship.update()
+        self._update_bullets()
+        self._update_aliens()
+
+        self._update_screen()
+
+        return self.render(self.mode)
 
     def _check_inputs(self):
         if self.action == 0: # NOOP
@@ -87,17 +103,20 @@ class AlienInvasionEnv(AlienInvasion):
     def _save_highscore(self):
         pass
 
-    def _preprocess_obs(self, obs): # this is not optimized
-        obs = np.mean(obs, axis=-1)
-        obs = np.round(obs).astype(np.uint8)
-        obs = np.transpose(obs, (1, 0))
-        # obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
-        obs = obs[50:, :, np.newaxis]
+    def _preprocess_obs(self, obs):
+        if self.preprocess_obs:
+            # obs = np.mean(obs, axis=-1)
+            # obs = np.round(obs).astype(np.uint8)
+            # obs = obs[..., np.newaxis]
 
-        height, width, _ = obs.shape
-        new_width = width // 4
-        new_height = height // 4
-        obs = cv2.resize(obs, (new_width, new_height), interpolation=cv2.INTER_LINEAR)[..., np.newaxis]
+            obs = np.transpose(obs, (1, 0, 2))
+            obs = obs[50:, :]
+
+            height, width, _ = obs.shape
+            new_width = width // 4
+            new_height = height // 4
+            obs = cv2.resize(obs, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+            obs = obs[..., np.newaxis]
 
         return obs
 
@@ -129,7 +148,8 @@ class AlienInvasionEnv(AlienInvasion):
     def step(self, action, mode="human"):
         self.action = action
         self.mode = mode
-        state = next(self._game_driver)
+        obs = next(self._game_driver)
+        # obs = self._run_game2()
 
         reward = self._reward_func()
         info = {
@@ -148,11 +168,21 @@ class AlienInvasionEnv(AlienInvasion):
 
         self.prev_info = info
 
-        return state, reward, info, done
+        return obs, reward, done, info
 
-    def render(self, mode="human"):
-        state = pygame.surfarray.array3d(self.screen)
-        state = self._preprocess_obs(state)
+    def render(self, mode="human"): # Needs furthur optimization
+        pixel_array = pygame.PixelArray(self.screen)
+        if self.render_type == "gray_scale":
+            obs = np.array(pixel_array, dtype="uint8")[..., np.newaxis]
+            del pixel_array
+        elif self.render_type == "rgb":
+            pixel_array = np.array(pixel_array)
+            obs = np.zeros((self.screen.get_width(), self.screen.get_height(), 3), dtype=np.uint8)
+            obs[:, :, 0] = (pixel_array >> 16) & 0xFF  # Red channel
+            obs[:, :, 1] = (pixel_array >> 8) & 0xFF   # Green channel
+            obs[:, :, 2] = pixel_array & 0xFF          # Blue channel
+
+        obs = self._preprocess_obs(obs)
 
         if mode == "rgb_array":
             pygame.display.iconify()
@@ -167,7 +197,7 @@ class AlienInvasionEnv(AlienInvasion):
                 # pygame.display.set_caption("Alien Invasion")
             pass
 
-        return state
+        return obs
 
     def reset(self, mode="human"):
         self.close()
@@ -175,6 +205,8 @@ class AlienInvasionEnv(AlienInvasion):
         super().__init__()
         self.game_active = True
         self.game_over = False
+
+        self.action = 0
         self._game_driver = self._run_game()
 
         self.prev_info = {
@@ -182,7 +214,7 @@ class AlienInvasionEnv(AlienInvasion):
             "level": self.stats.level,
             "score": self.stats.score,
             "high_score": self.stats.high_score,
-            "#activate bullets": len(self.bullets.sprites()),
+            "#active bullets": len(self.bullets.sprites()),
             "#remaining aliens": len(self.aliens.sprites()),
             "alien point multiplier": self.settings.alien_points,
         }
@@ -194,13 +226,18 @@ class AlienInvasionEnv(AlienInvasion):
 
 
 if __name__ == "__main__":
-    env = AlienInvasionEnv()
+    env = AlienInvasionEnv(preprocess_obs=True)
     obs = env.reset()
 
-    while True:
+    done = False
+
+    frames = 0
+    start = time.time()
+    while not done:
         i = random.randint(0, 5)
-        obs, reward, info, done = env.step(i, mode="human")
-        print(reward)
+        obs, reward, done, info = env.step(i, mode="human")
+        frames += 1
+        # print(reward)
 
         # plt.imsave("last_frame.png", obs)
 
@@ -209,3 +246,4 @@ if __name__ == "__main__":
 
         # break
         pass
+    print(frames / (time.time() - start))
