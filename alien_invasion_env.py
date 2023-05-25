@@ -1,41 +1,33 @@
+from alien_invasion import AlienInvasion
+from alien import Alien
+
 import pygame
 
 import cv2
 
 import numpy as np
 
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 
 import random
 
 import time
 
-from alien_invasion import AlienInvasion
-
 
 class AlienInvasionEnv(AlienInvasion):
 
-    def __init__(self, preprocess_obs=False, render_type="gray_scale"):
-        # super().__init__()
-        # self.game_active = True
-        # self.game_over = False
-        # self._game_driver = self._run_game()
-
-        # self.prev_info = {
-        #     "ship left": self.stats.ship_left,
-        #     "level": self.stats.level,
-        #     "score": self.stats.score,
-        #     "high_score": self.stats.high_score,
-        #     "#activate bullets": len(self.bullets.sprites()),
-        #     "#remaining aliens": len(self.aliens.sprites()),
-        #     "alien point multiplier": self.settings.alien_points,
-        # }
+    def __init__(self, preprocess_obs=False, render_type="gray_scale", **kwargs):
+        super().__init__(**kwargs)
+        self.game_active = True
+        self.game_over = False
 
         # self.mode = mode
         self.preprocess_obs = preprocess_obs
         self.render_type = render_type
 
+        # self._game_driver = self._run_game()
         self.action = 0
+        self.prev_info = self._get_info
 
     def _run_game(self):
         while True:
@@ -62,22 +54,30 @@ class AlienInvasionEnv(AlienInvasion):
 
     def _check_inputs(self):
         if self.action == 0: # NOOP
-            pass
-        elif self.action == 1: # RIGHT
-            self.ship.moving_right = True
             self.ship.moving_left = False
-        elif self.action == 2: # LEFT
-            self.ship.moving_left = True
             self.ship.moving_right = False
+        elif self.action == 1: # LEFT
+            self.ship.moving_right = False
+
+            self.ship.moving_left = True
+        elif self.action == 2: # RIGHT
+            self.ship.moving_left = False
+            
+            self.ship.moving_right = True
         elif self.action == 3: # FIRE
+            self.ship.moving_left = False
+            self.ship.moving_right = False
+
             self._fire_bullet()
         elif self.action == 4: # LEFTFIRE
-            self.ship.moving_left = True
             self.ship.moving_right = False
+
+            self.ship.moving_left = True
             self._fire_bullet()
         elif self.action == 5: # RIGHTFIRE
-            self.ship.moving_right = True
             self.ship.moving_left = False
+
+            self.ship.moving_right = True
             self._fire_bullet()
 
     def _ship_hit(self):
@@ -96,6 +96,51 @@ class AlienInvasionEnv(AlienInvasion):
             self.game_active = False
             self.game_over = True
             pygame.mouse.set_visible(True)
+
+    def _create_alien(self, current_x, current_y, row, col):
+        alien = Alien(self, (row, col))
+        alien.x = current_x
+        alien.rect.x = current_x
+        alien.rect.y = current_y
+        self.aliens.add(alien)
+
+    def _create_fleet(self):
+        self.fleet_state = np.ones((5, 10), dtype=np.uint8)
+
+        alien = Alien(self)
+        alien_width, alien_height = alien.rect.size
+
+        current_x, current_y = alien_width, alien_height
+        row = 0
+        while current_y < (self.settings.screen_dims[1] - 3 * alien_height):
+            col = 0
+            while current_x < (self.settings.screen_dims[0] - 2 * alien_width):
+                self._create_alien(current_x, current_y, row, col)
+                current_x += 2 * alien_width
+
+                col += 1
+
+            current_x = alien_width
+            current_y += 2 * alien_height
+
+    def _check_bullet_alien_collision(self):
+        collisions = pygame.sprite.groupcollide(self.bullets, self.aliens, True, True)
+
+        if collisions:
+            for alien in collisions.values():
+                self.stats.score += self.settings.alien_points * len(alien)
+                for a in alien:
+                    alien_row, alien_col = a.label
+                    self.fleet_state[alien_row][alien_col] = 0
+
+            self.sb.prep_score()
+            self.sb.check_hight_score()
+
+        if not self.aliens:
+            self.bullets.empty()
+            self._create_fleet()
+
+            self._increment_level()
 
     def _load_highscore(self):
         pass
@@ -120,47 +165,72 @@ class AlienInvasionEnv(AlienInvasion):
 
         return obs
 
-    def _reward_func(self):
-        alien_hits = (self.stats.score - self.prev_info["score"]) / self.prev_info["alien point multiplier"]
-        ship_hit = self.stats.ship_left - self.prev_info["ship left"]
-        level_up = self.stats.level - self.prev_info["level"]
+    def _reward_func(self, info):
+        ship_distance_from_center = abs(self.ship.rect.centerx - self.screen_rect.centerx)
+        remaining_aliens = info["#remaining aliens"]
+        alien_hits = self.prev_info["#remaining aliens"] - info["#remaining aliens"]
+        bullet_wasted = self.prev_info["#active bullets"] - info["#active bullets"]
+        ship_hit = info["ship left"] - self.prev_info["ship left"]
+        level_up = info["level"] - self.prev_info["level"]
 
         reward = 0
 
-        if self.action == 0:
-            reward -= 1
-        elif self.action in (3, 4, 5):
-            reward -= 2
+        # reward -= ship_distance_from_center / 1000
+
+        reward -= remaining_aliens / 500
+
+        # if self.action == 0:
+        #     reward -= 1
+        # elif self.action in (3, 4, 5):
+        #     reward -= 2
+
+        if bullet_wasted and not alien_hits:
+            reward -= 5 * bullet_wasted
 
         if ship_hit:
-            reward -= 10
-        else:
-            reward += 1
+            reward -= 500
+        # else:
+        #     reward += 0.07
 
-        if alien_hits:
-            reward += 5 * alien_hits
+        if alien_hits: # needs to be optimized
+            reward += 10 * alien_hits
+
+            for prev_row, row in zip(self.prev_info["remaining fleet row"], info["remaining fleet row"]):
+                if prev_row != row:
+                    reward += 100
+            for prev_col, col in zip(self.prev_info["remaining fleet col"], info["remaining fleet col"]):
+                if prev_col != col:
+                    reward += 50
 
         if level_up:
-            reward += 10
+            reward += 300
 
         return reward
 
-    def step(self, action, mode="human"):
-        self.action = action
-        self.mode = mode
-        obs = next(self._game_driver)
-        # obs = self._run_game2()
+    def _get_info(self):
+        fleet_row_state = (self.fleet_state @ np.zeros((10, 1))).flatten()
+        fleet_col_state = (self.fleet_state.T @ np.zeros((5, 1))).flatten()
 
-        reward = self._reward_func()
-        info = {
+        return {
             "ship left": self.stats.ship_left,
             "level": self.stats.level,
             "score": self.stats.score,
             "high_score": self.stats.high_score,
-            "#activate bullets": len(self.bullets.sprites()),
+            "#active bullets": len(self.bullets.sprites()),
             "#remaining aliens": len(self.aliens.sprites()),
+            "remaining fleet row": fleet_row_state,
+            "remaining fleet col": fleet_col_state,
             "alien point multiplier": self.settings.alien_points,
         }
+
+    def step(self, action, mode="human"):
+        self.action = action
+        self.mode = mode
+        # obs = next(self._game_driver)
+        obs = self._run_game2()
+
+        info = self._get_info()
+        reward = self._reward_func(info)
         done = self.game_over
 
         if done:
@@ -200,24 +270,12 @@ class AlienInvasionEnv(AlienInvasion):
         return obs
 
     def reset(self, mode="human"):
-        self.close()
+        # self.close()
 
-        super().__init__()
-        self.game_active = True
-        self.game_over = False
-
+        # self._game_driver = self._run_game()
+        self._restart_game()
         self.action = 0
-        self._game_driver = self._run_game()
-
-        self.prev_info = {
-            "ship left": self.stats.ship_left,
-            "level": self.stats.level,
-            "score": self.stats.score,
-            "high_score": self.stats.high_score,
-            "#active bullets": len(self.bullets.sprites()),
-            "#remaining aliens": len(self.aliens.sprites()),
-            "alien point multiplier": self.settings.alien_points,
-        }
+        self.prev_info = self._get_info()
 
         return self.render(mode=mode)
 
@@ -226,24 +284,31 @@ class AlienInvasionEnv(AlienInvasion):
 
 
 if __name__ == "__main__":
-    env = AlienInvasionEnv(preprocess_obs=True)
+    env = AlienInvasionEnv(
+        # game_resolution=(720, 720), 
+        preprocess_obs=False
+    )
+
     obs = env.reset()
 
     done = False
+    rewards = 0
 
     frames = 0
     start = time.time()
     while not done:
         i = random.randint(0, 5)
         obs, reward, done, info = env.step(i, mode="human")
-        frames += 1
+        rewards += reward
+
+        print(f"\r{rewards}", end="")
         # print(reward)
 
         # plt.imsave("last_frame.png", obs)
 
         # plt.imshow(obs, cmap='gray')
         # plt.show()
-
-        # break
-        pass
+    
+        frames += 1
+    print()
     print(frames / (time.time() - start))

@@ -1,7 +1,6 @@
 ----Environment requirements:
-Python 3.11.3
-cx-Freeze          6.14.9
-pygame             2.3.0
+Python          3.10.10
+requirements.txt
 
 
 ----To build the project write this command in a terminal:

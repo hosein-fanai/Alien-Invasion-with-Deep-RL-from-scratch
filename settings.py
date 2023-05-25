@@ -1,7 +1,7 @@
 class Settings:
 
-    def __init__(self):
-        self.screen_dims = 1280, 720 #854, 480
+    def __init__(self, screen_dims): 
+        self.screen_dims = screen_dims
         self.bg_color = (230, 230, 230)
         self.menu_bg_color = (198, 255, 191)
         

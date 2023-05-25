@@ -1,6 +1,10 @@
 __pycache__
+.ipynb_checkpoints
+
 #images
+rl videos
 build
 #dist
+
 build.zip
-models/DQN_*.h5
+DQN_*.h5

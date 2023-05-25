@@ -15,7 +15,7 @@ from alien import Alien
 
 class AlienInvasion:
 
-    def __init__(self):
+    def __init__(self, game_resolution=(1280, 720)): # 854, 480
         pygame.init()
 
         self.game_active = False
@@ -26,7 +26,7 @@ class AlienInvasion:
         icon = pygame.image.load("ai.ico")
         pygame.display.set_icon(icon)
 
-        self.settings = Settings()
+        self.settings = Settings(screen_dims=game_resolution)
         
         self.screen = pygame.display.set_mode(
             self.settings.screen_dims,
