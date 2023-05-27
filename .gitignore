@@ -7,4 +7,6 @@ build
 #dist
 
 build.zip
+
+models/*/
 DQN_*.h5
