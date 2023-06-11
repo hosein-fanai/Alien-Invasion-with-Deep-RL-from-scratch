@@ -3,7 +3,6 @@ from alien_invasion_env import AlienInvasionEnv
 import tensorflow as tf
 
 import gym
-from gym import Env
 from gym.spaces import Box, Discrete
 from gym.wrappers import FrameStack, GrayScaleObservation
 from gym.wrappers import ResizeObservation
@@ -97,7 +96,7 @@ import time
 #         pass
 
 
-class AlienInvasionGymEnv(Env):
+class AlienInvasionGymEnv(gym.Env):
     
     def __init__(self, **kwargs):
         self.game = AlienInvasionEnv(**kwargs)
@@ -133,18 +132,31 @@ class TransposeCropObservation(gym.ObservationWrapper):
 
         shape = env.observation_space.shape
         if self.swap_dims:
-            shape = (shape[2]-self.crop_size, shape[1], shape[0])
+            if self.swap_time:
+                shape = (shape[2]-self.crop_size, shape[1], shape[0])
+            else:
+                shape = (shape[0], shape[2]-self.crop_size, shape[1], shape[-1])
         else:
-            shape = (shape[1], shape[2]-self.crop_size, shape[0])
+            if self.swap_time:
+                shape = (shape[1], shape[2]-self.crop_size, shape[0])
+            else:
+                shape = (shape[0], shape[1], shape[2]-self.crop_size, shape[-1])
+
         self.observation_space = gym.spaces.Box(low=0, high=255, 
                                             shape=shape, 
                                             dtype="uint8")
 
     def observation(self, observation):
         if self.swap_dims:
-            observation = np.transpose(observation, (3, 2, 1, 0))[0, self.crop_size:, :]
+            if self.swap_time:
+                observation = np.transpose(observation, (3, 2, 1, 0))[0, self.crop_size:, :]
+            else:
+                observation = np.transpose(observation, (0, 2, 1, 3))[:, self.crop_size:, :]
         else:
-            observation = np.transpose(observation, (3, 1, 2, 0))[0, :, self.crop_size:]
+            if self.swap_time:
+                observation = np.transpose(observation, (3, 1, 2, 0))[0, :, self.crop_size:]
+            else:
+                observation = np.transpose(observation, (0, 1, 2, 3))[:, :, self.crop_size:]
 
         return observation
 
@@ -169,6 +181,19 @@ class SkipFrame(gym.ObservationWrapper):
             return observation
 
 
+class TruncateOnShiphit(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+
+        if info["ship left"] < 3:
+            done = True
+
+        return obs, reward, done, info
+
+
 # class ActionRepeat(gym.Wrapper):
 
 #     def __init__(self, env, action_repeat):
@@ -186,7 +211,20 @@ class SkipFrame(gym.ObservationWrapper):
 #         return obs, total_reward, done, info
 
 
-def make_env(game_resolution=(1280, 720), preprocessing_type="env_defalut_preps", num_stack=4, skipframe_div=1):
+class ConvertTypeObservation(gym.ObservationWrapper):
+    
+    def __init__(self, env):
+        super().__init__(env)
+
+        self.observation_space = gym.spaces.Box(low=0, high=255, 
+                                            shape=env.observation_space.shape, 
+                                            dtype="bfloat16")
+
+    def observation(self, observation):
+        return observation
+
+
+def make_env(game_resolution=(1280, 720), preprocessing_type="env_defalut_preps", num_stack=4, reverse_time_dim=True, skipframe_div=1, truncate_on_shiphit=False):
     env = AlienInvasionGymEnv(
         game_resolution=game_resolution,
         preprocess_obs=True if preprocessing_type=="env_defalut_preps" else False
@@ -202,11 +240,16 @@ def make_env(game_resolution=(1280, 720), preprocessing_type="env_defalut_preps"
     env = TransposeCropObservation(
         env, 
         crop_size=0 if preprocessing_type!="" else 50,
-        swap_dims=False if preprocessing_type=="env_defalut_preps" else True
+        swap_dims=False if preprocessing_type=="env_defalut_preps" else True,
+        swap_time=reverse_time_dim
     )
     env = SkipFrame(env, skip_frame=skipframe_div)
 
+    if truncate_on_shiphit:
+        env = TruncateOnShiphit(env)
+
     return env
+
 
 class DQNAgent:
 
