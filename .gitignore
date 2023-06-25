@@ -1,7 +1,8 @@
 __pycache__
 .ipynb_checkpoints
 
-#images
+logs
+
 rl videos
 build
 #dist
@@ -10,3 +11,5 @@ build.zip
 
 models/*/
 DQN_*.h5
+
+test.ipynb
