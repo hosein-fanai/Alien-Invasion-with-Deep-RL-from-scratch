@@ -190,7 +190,7 @@ class AlienInvasionEnv(AlienInvasion):
         if bullet_wasted > 0 and not alien_hits:
             reward -= 1 * bullet_wasted
 
-        if ship_hit:
+        if ship_hit or self.game_over:
             reward -= 10
         # else:
         #     reward += 0.07
