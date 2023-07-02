@@ -134,7 +134,7 @@ class TransposeCropObservation(gym.ObservationWrapper):
             if self.swap_time:
                 shape = (shape[1], shape[2]-self.crop_size, shape[0])
             else:
-                shape = (shape[0], shape[1], shape[2]-self.crop_size, shape[-1])
+                shape = (shape[0], shape[1], shape[2]-self.crop_size) + ((shape[3],) if len(shape)==4 else ())
 
         self.observation_space = gym.spaces.Box(low=0, high=255, 
                                             shape=shape, 
@@ -150,7 +150,7 @@ class TransposeCropObservation(gym.ObservationWrapper):
             if self.swap_time:
                 observation = np.transpose(observation, (3, 1, 2, 0))[0, :, self.crop_size:]
             else:
-                observation = np.transpose(observation, (0, 1, 2, 3))[:, :, self.crop_size:]
+                observation = np.array(observation)[:, :, self.crop_size:]
 
         return observation
 
@@ -225,11 +225,13 @@ class ConvertTypeObservation(gym.ObservationWrapper):
         return observation
 
 
-def make_env(game_resolution=(1280, 720), preprocessing_type="env_defalut_preps", num_stack=4, reverse_time_dim=True, skipframe_div=1, truncate_on_shiphit=False):
+def make_env(game_resolution=(1280, 720), preprocessing_type="env_defalut_preps", reset_pygame=False, 
+        num_stack=4, reverse_time_dim=True, skipframe_div=1, truncate_on_shiphit=False):
     env = AlienInvasionGymEnv(
         game_resolution=game_resolution,
-        preprocess_obs=True if preprocessing_type=="env_defalut_preps" else False
-)
+        preprocess_obs=True if preprocessing_type=="env_defalut_preps" else False,
+        reset_pygame_import=reset_pygame
+    )
 
     if preprocessing_type == "gym_wrappers":
         height, width, _ = env.observation_space.shape
@@ -237,14 +239,18 @@ def make_env(game_resolution=(1280, 720), preprocessing_type="env_defalut_preps"
         env = GrayScaleObservation(env)
 
     # env = ActionRepeat(env, action_repeat=4)
-    env = FrameStack(env, num_stack=num_stack)
+    if num_stack:
+        env = FrameStack(env, num_stack=num_stack)
+
     env = TransposeCropObservation(
         env, 
         crop_size=0 if preprocessing_type!="" else 50,
         swap_dims=False if preprocessing_type=="env_defalut_preps" else True,
-        swap_time=reverse_time_dim
+        swap_time=reverse_time_dim if num_stack else False
     )
-    env = SkipFrame(env, skip_frame=skipframe_div, channels_last=reverse_time_dim)
+
+    if skipframe_div > 1:
+        env = SkipFrame(env, skip_frame=skipframe_div, channels_last=reverse_time_dim)
 
     if truncate_on_shiphit:
         env = TruncateOnShiphit(env)

@@ -16,7 +16,7 @@ import time
 
 class AlienInvasionEnv(AlienInvasion):
 
-    def __init__(self, preprocess_obs=False, render_type="gray_scale", **kwargs):
+    def __init__(self, preprocess_obs=False, render_type="gray_scale", reset_pygame_import=False, **kwargs):
         super().__init__(**kwargs)
         self.game_active = True
         self.game_over = False
@@ -24,10 +24,11 @@ class AlienInvasionEnv(AlienInvasion):
         # self.mode = mode
         self.preprocess_obs = preprocess_obs
         self.render_type = render_type
+        self.reset_pygame_import = reset_pygame_import
 
         # self._game_driver = self._run_game()
         self.action = 0
-        self.prev_info = self._get_info
+        self.prev_info = self._get_info()
 
     def _run_game(self):
         while True:
@@ -123,6 +124,8 @@ class AlienInvasionEnv(AlienInvasion):
             current_x = alien_width
             current_y += 2 * alien_height
 
+            row += 1
+
     def _check_bullet_alien_collision(self):
         collisions = pygame.sprite.groupcollide(self.bullets, self.aliens, True, True)
 
@@ -166,8 +169,8 @@ class AlienInvasionEnv(AlienInvasion):
         return obs
 
     def _reward_func(self, info):
-        ship_distance_from_center = abs(self.ship.rect.centerx - self.screen_rect.centerx)
-        remaining_aliens = info["#remaining aliens"]
+        # ship_distance_from_center = abs(self.ship.rect.centerx - self.screen_rect.centerx)
+        # remaining_aliens = info["#remaining aliens"]
         alien_hits = self.prev_info["#remaining aliens"] - info["#remaining aliens"]
         bullet_wasted = self.prev_info["#active bullets"] - info["#active bullets"]
         ship_hit = info["ship left"] - self.prev_info["ship left"]
@@ -177,39 +180,39 @@ class AlienInvasionEnv(AlienInvasion):
 
         # reward -= ship_distance_from_center / 1000
 
-        reward -= remaining_aliens / 500
+        # reward -= remaining_aliens / 500
 
         # if self.action == 0:
         #     reward -= 1
         # elif self.action in (3, 4, 5):
         #     reward -= 2
 
-        if bullet_wasted and not alien_hits:
-            reward -= 5 * bullet_wasted
+        if bullet_wasted > 0 and not alien_hits:
+            reward -= 1 * bullet_wasted
 
         if ship_hit:
-            reward -= 500
+            reward -= 10
         # else:
         #     reward += 0.07
 
-        if alien_hits: # needs to be optimized
-            reward += 10 * alien_hits
+        if alien_hits and not ship_hit: # needs to be optimized
+            reward += 1 * alien_hits
 
             for prev_row, row in zip(self.prev_info["remaining fleet row"], info["remaining fleet row"]):
-                if prev_row != row:
-                    reward += 100
+                if prev_row != row and row == 0:
+                    reward += 10
             for prev_col, col in zip(self.prev_info["remaining fleet col"], info["remaining fleet col"]):
-                if prev_col != col:
-                    reward += 50
+                if prev_col != col and col == 0:
+                    reward += 5
 
         if level_up:
-            reward += 300
+            reward += 10
 
         return reward
 
     def _get_info(self):
-        fleet_row_state = (self.fleet_state @ np.zeros((10, 1))).flatten()
-        fleet_col_state = (self.fleet_state.T @ np.zeros((5, 1))).flatten()
+        fleet_row_state = (self.fleet_state @ np.ones((10, 1))).flatten()
+        fleet_col_state = (self.fleet_state.T @ np.ones((5, 1))).flatten()
 
         return {
             "ship left": self.stats.ship_left,
@@ -242,20 +245,26 @@ class AlienInvasionEnv(AlienInvasion):
 
     def render(self, mode="human"): # Needs furthur optimization
         pixel_array = pygame.PixelArray(self.screen)
-        if self.render_type == "gray_scale":
+
+        if self.render_type == "gray_scale" or mode == "bw_aray":
             obs = np.array(pixel_array, dtype="uint8")[..., np.newaxis]
-            del pixel_array
-        elif self.render_type == "rgb":
+            obs = self._preprocess_obs(obs)
+        if self.render_type == "rgb" or mode == "rgb_array":
             pixel_array = np.array(pixel_array)
             obs = np.zeros((self.screen.get_width(), self.screen.get_height(), 3), dtype=np.uint8)
             obs[:, :, 0] = (pixel_array >> 16) & 0xFF  # Red channel
             obs[:, :, 1] = (pixel_array >> 8) & 0xFF   # Green channel
             obs[:, :, 2] = pixel_array & 0xFF          # Blue channel
-
-        obs = self._preprocess_obs(obs)
+            obs = np.transpose(obs, (1, 0, 2))
+        
+        del pixel_array
 
         if mode == "rgb_array":
-            pygame.display.iconify()
+            # pygame.display.iconify()
+            pass
+        if mode == "bw_aray":
+            # pygame.display.iconify()
+            pass
         elif mode == "human": # TODO fix this
             # if self.screen is None:
                 # icon = pygame.image.load("ai.ico")
@@ -270,17 +279,20 @@ class AlienInvasionEnv(AlienInvasion):
         return obs
 
     def reset(self, mode="human"):
-        # self.close()
-
-        # self._game_driver = self._run_game()
-        self._restart_game()
-        self.action = 0
-        self.prev_info = self._get_info()
+        if self.reset_pygame_import:
+            self.close()
+            self.__init__(preprocess_obs=True)
+        else:
+            # self._game_driver = self._run_game()
+            self._restart_game()
+            self.action = 0
+            self.prev_info = self._get_info()
 
         return self.render(mode=mode)
 
     def close(self):
-        pygame.quit()
+        # pass
+        pygame.quit()        
 
 
 if __name__ == "__main__":
