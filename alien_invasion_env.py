@@ -16,18 +16,23 @@ import time
 
 class AlienInvasionEnv(AlienInvasion):
 
-    def __init__(self, preprocess_obs=False, render_type="gray_scale", reset_pygame_import=False, **kwargs):
+    def __init__(self, preprocess_obs=False, render_type="gray_scale", reset_pygame_import=False, difficulty=None, **kwargs):
         super().__init__(**kwargs)
         self.game_active = True
         self.game_over = False
+
+        self.manual_use = False
 
         # self.mode = mode
         self.preprocess_obs = preprocess_obs
         self.render_type = render_type
         self.reset_pygame_import = reset_pygame_import
+        self.difficulty = difficulty
 
         # self._game_driver = self._run_game()
         self.action = 0
+
+        self._restart_game()
         self.prev_info = self._get_info()
 
     def _run_game(self):
@@ -55,31 +60,61 @@ class AlienInvasionEnv(AlienInvasion):
 
     def _check_inputs(self):
         if self.action == 0: # NOOP
-            self.ship.moving_left = False
-            self.ship.moving_right = False
+            if not self.manual_use:
+                self.ship.moving_left = False
+                self.ship.moving_right = False
         elif self.action == 1: # LEFT
-            self.ship.moving_right = False
-
-            self.ship.moving_left = True
+            if not self.manual_use:
+                self.ship.moving_right = False
+                self.ship.moving_left = True
         elif self.action == 2: # RIGHT
-            self.ship.moving_left = False
-            
-            self.ship.moving_right = True
+            if not self.manual_use:
+                self.ship.moving_left = False
+                self.ship.moving_right = True
         elif self.action == 3: # FIRE
-            self.ship.moving_left = False
-            self.ship.moving_right = False
+            if not self.manual_use:
+                self.ship.moving_left = False
+                self.ship.moving_right = False
 
             self._fire_bullet()
         elif self.action == 4: # LEFTFIRE
-            self.ship.moving_right = False
+            if not self.manual_use:
+                self.ship.moving_right = False
+                self.ship.moving_left = True
 
-            self.ship.moving_left = True
             self._fire_bullet()
         elif self.action == 5: # RIGHTFIRE
-            self.ship.moving_left = False
+            if not self.manual_use:
+                self.ship.moving_left = False
+                self.ship.moving_right = True
 
-            self.ship.moving_right = True
             self._fire_bullet()
+
+    def _check_events(self):
+        is_event_key_pressed = False
+        for event in pygame.event.get([pygame.KEYDOWN, pygame.KEYUP]):
+            if event.type == pygame.KEYDOWN:
+                self._check_keydown_events(event)
+                is_event_key_pressed = True
+            elif event.type == pygame.KEYUP:
+                self._check_keyup_events(event)
+                is_event_key_pressed = True
+            break
+
+        if is_event_key_pressed:
+            match event.key:
+                case pygame.K_LEFT:
+                    return 1
+                case pygame.K_RIGHT:
+                    return 2
+                case pygame.K_SPACE:
+                    if self.ship.moving_left == True:
+                        return 4
+                    elif self.ship.moving_right == True:
+                        return 5
+                    else:
+                        return 3
+        return 0
 
     def _ship_hit(self):
         if self.stats.ship_left > 0:
@@ -151,6 +186,28 @@ class AlienInvasionEnv(AlienInvasion):
     def _save_highscore(self):
         pass
 
+    def _restart_game(self):
+        super()._restart_game()
+
+        match self.difficulty:
+            case 0:
+                self.fleet_state[0, :] = 0
+                self.fleet_state[:, (0, 1, 8, 9)] = 0
+            case 1:
+                self.fleet_state[:, (0, 1, 8, 9)] = 0
+            case 2:
+                self.fleet_state[:, (0, 8, 9)] = 0
+            case 3:
+                self.fleet_state[:, (0, 9)] = 0
+            case 4:
+                self.fleet_state[:, 9] = 0
+            case _:
+                pass
+
+        for alien in self.aliens.sprites():
+            if self.fleet_state[alien.label] == 0:
+                self.aliens.remove(alien)
+
     def _preprocess_obs(self, obs):
         if self.preprocess_obs:
             # obs = np.mean(obs, axis=-1)
@@ -187,7 +244,7 @@ class AlienInvasionEnv(AlienInvasion):
         # elif self.action in (3, 4, 5):
         #     reward -= 2
 
-        if bullet_wasted > 0 and not alien_hits:
+        if bullet_wasted > 0 and not alien_hits and not level_up:
             reward -= 1 * bullet_wasted
 
         if ship_hit or self.game_over:
@@ -195,7 +252,7 @@ class AlienInvasionEnv(AlienInvasion):
         # else:
         #     reward += 0.07
 
-        if alien_hits and not ship_hit: # needs to be optimized
+        if alien_hits and not ship_hit and not level_up: # needs to be optimized
             reward += 1 * alien_hits
 
             for prev_row, row in zip(self.prev_info["remaining fleet row"], info["remaining fleet row"]):
@@ -206,7 +263,7 @@ class AlienInvasionEnv(AlienInvasion):
                     reward += 5
 
         if level_up:
-            reward += 10
+            reward += 20
 
         return reward
 
