@@ -7,6 +7,10 @@ from gym.wrappers import ResizeObservation
 
 import numpy as np
 
+import PIL
+
+import os
+
 
 # class OnDiskReplayBuffer:
 #     file_name_prefix = "buffer cache"
@@ -195,21 +199,22 @@ class TruncateOnShiphit(gym.Wrapper):
         return obs, reward, done, info
 
 
-# class ActionRepeat(gym.Wrapper):
+class ActionRepeat(gym.Wrapper):
 
-#     def __init__(self, env, action_repeat):
-#         super().__init__(env)
-#         self.action_repeat = action_repeat
+    def __init__(self, env, action_repeat=4):
+        super().__init__(env)
+        self.action_repeat = action_repeat
 
-#     def step(self, action):
-#         total_reward = 0
-#         for _ in range(self.action_repeat):
-#             obs, reward, done, info = self.env.step(action)
-#             total_reward += reward
-#             if done:
-#                 break
+    def step(self, action):
+        total_reward = 0
 
-#         return obs, total_reward, done, info
+        for _ in range(self.action_repeat):
+            obs, reward, done, info = self.env.step(action)
+            total_reward += reward
+            if done:
+                break
+
+        return obs, total_reward, done, info
 
 
 class ConvertTypeObservation(gym.ObservationWrapper):
@@ -225,12 +230,30 @@ class ConvertTypeObservation(gym.ObservationWrapper):
         return observation
 
 
+def save_frames_to_gif(frames, file_name, frames_step=1, duration=30):
+    image_path = os.path.join("rl videos", file_name)
+    # os.makedirs(image_path, exist_ok=True)
+
+    frame_images = []
+    for _ in range(len(frames)):
+        frame = frames.pop(0)
+        frame_images.append(PIL.Image.fromarray(frame))
+
+    frame_images[0].save(image_path, format='GIF',
+                        append_images=frame_images[1::frames_step],
+                        save_all=True,
+                        duration=duration,
+                        loop=0)
+
+
 def make_env(game_resolution=(1280, 720), preprocessing_type="env_defalut_preps", reset_pygame=False, 
-        num_stack=4, reverse_time_dim=True, skipframe_div=1, truncate_on_shiphit=False):
+        difficulty=None, truncate_on_shiphit=False, action_repeat=None, num_stack=4, reverse_time_dim=True, 
+        skipframe_div=1):
     env = AlienInvasionGymEnv(
         game_resolution=game_resolution,
         preprocess_obs=True if preprocessing_type=="env_defalut_preps" else False,
-        reset_pygame_import=reset_pygame
+        reset_pygame_import=reset_pygame,
+        difficulty=difficulty
     )
 
     if preprocessing_type == "gym_wrappers":
@@ -238,7 +261,12 @@ def make_env(game_resolution=(1280, 720), preprocessing_type="env_defalut_preps"
         env = ResizeObservation(env, shape=(height//4, width//4))
         env = GrayScaleObservation(env)
 
-    # env = ActionRepeat(env, action_repeat=4)
+    if truncate_on_shiphit:
+        env = TruncateOnShiphit(env)
+
+    if action_repeat:
+        env = ActionRepeat(env, action_repeat=action_repeat)
+
     if num_stack:
         env = FrameStack(env, num_stack=num_stack)
 
@@ -251,9 +279,6 @@ def make_env(game_resolution=(1280, 720), preprocessing_type="env_defalut_preps"
 
     if skipframe_div > 1:
         env = SkipFrame(env, skip_frame=skipframe_div, channels_last=reverse_time_dim)
-
-    if truncate_on_shiphit:
-        env = TruncateOnShiphit(env)
 
     return env
 
