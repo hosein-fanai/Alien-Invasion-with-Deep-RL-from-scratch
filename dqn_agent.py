@@ -48,12 +48,9 @@ class DQNAgent:
 
     #     return first_state, second_state
 
-    def _play_one_step(self, state, epsilon=0.01, truncate_in_shiphit=False):
+    def _play_one_step(self, state, epsilon=0.01):
         action = self.epsilon_greedy_policy(state, epsilon)
         next_state, reward, done, info = self.env.step(action)
-
-        if info["ship left"] < 3 and truncate_in_shiphit:
-            done = True
 
         # consec_states = compress_two_consecutive_states(state, next_state)
         # replay_buffer.append((consec_states, action, reward, done))
@@ -61,7 +58,7 @@ class DQNAgent:
 
         return next_state, reward, done, info
 
-    def _play_multiple_steps(self, n_step, epsilon, truncate_in_shiphit):
+    def _play_multiple_steps(self, n_step, epsilon):
         # obs = self.env.reset(mode="rgb_array")
         obs = self.env.reset()
         total_reward = 0
@@ -69,7 +66,7 @@ class DQNAgent:
         frames = 0
         start = time.time()
         for step in range(n_step):
-            obs, reward, done, _ = self._play_one_step(obs, epsilon, truncate_in_shiphit)
+            obs, reward, done, _ = self._play_one_step(obs, epsilon)
             total_reward += reward
             if done:
                 break
@@ -77,6 +74,35 @@ class DQNAgent:
         fps = int(frames // (time.time() - start))
 
         # replay_buffer.dump()
+        
+        return total_reward, step, fps
+
+    def _play_one_step_manually(self, state):
+        action = self.env.game._check_events()
+        next_state, reward, done, info = self.env.step(action)
+
+        self.replay_buffer.append((state, action, reward, next_state, done))
+
+        return next_state, reward, done, info
+
+    def _play_multiple_steps_manually(self, n_step, manual_fps):
+        obs = self.env.reset()
+        self.env.game.manual_use = True
+
+        total_reward = 0
+
+        frames = 0
+        start = time.time()
+        for step in range(n_step):
+            obs, reward, done, _ = self._play_one_step_manually(obs)
+            total_reward += reward
+            if done:
+                break
+            frames += 1
+            self.env.game.clock.tick(manual_fps)
+        fps = int(frames // (time.time() - start))
+
+        self.env.game.manual_use = False
         
         return total_reward, step, fps
 
@@ -123,7 +149,7 @@ class DQNAgent:
 
     def training_loop(self, iteration, n_step=10_000, batch_size=64, gamma=0.99, 
                     warmup=10, train_interval=1, target_update_interval=50, 
-                    soft_update=False, truncate_in_shiphit=False, epsilon_fn=None):
+                    soft_update=False, epsilon_fn=None):
         func = lambda episode: max(1-episode/(iteration*0.9), 0.01)
         epsilon_fn = func if epsilon_fn is None else epsilon_fn
 
@@ -139,7 +165,7 @@ class DQNAgent:
         for episode in range(iteration):
             epsilon = epsilon_fn(episode)
 
-            total_reward, step, fps = self._play_multiple_steps(n_step, epsilon, truncate_in_shiphit)
+            total_reward, step, fps = self._play_multiple_steps(n_step, epsilon)
             rewards.append(total_reward)
 
             if total_reward > best_score:
@@ -161,5 +187,49 @@ class DQNAgent:
                     self.target.set_weights(target_weights)
 
             print(f"\rEpisode: {episode}, Steps: {step}, FPS: {fps}, Reward:{total_reward:.1f}, Epsilon: {epsilon:.4f}, Loss: {loss}", end="")
+
+        return rewards, all_loss
+
+    def manual_training_loop(self, iteration, n_step=10_000, batch_size=32, 
+                    n_train_step=50, gamma=0.99, target_update_interval=50, 
+                    manual_play_interval=2, auto_play_interval=10, 
+                    manual_fps=60, soft_update=False, epsilon_fn=None):
+        func = lambda episode: max(1-episode/(iteration*0.9), 0.01)
+        epsilon_fn = func if epsilon_fn is None else epsilon_fn
+
+        best_score = float("-inf")
+        rewards = []
+        all_loss = []            
+
+        for iter in range(iteration):
+            if manual_play_interval % iter == 0:
+                _, step, fps = self._play_multiple_steps_manually(n_step, manual_fps)
+                print(f"---Manual Play---Iteration: {iter}, Steps: {step}, FPS: {fps}")
+
+            if auto_play_interval % iter == 0:
+                epsilon = epsilon_fn(iter)
+                total_reward, step, fps = self._play_multiple_steps(n_step, epsilon)
+                rewards.append(total_reward)
+
+                if total_reward > best_score:
+                    self.model.save_weights(f"models/DQN_ep#{episode}_eps#{epsilon:.4f}_rw#{total_reward:.1f}.h5")
+                    best_score = total_reward
+ 
+            loss = 0
+            for _ in range(n_train_step):
+                loss += self._train_step(batch_size, gamma)
+            all_loss.append(loss/n_train_step)
+
+            if iter % target_update_interval == 0:
+                if not soft_update:
+                    self.target.set_weights(self.model.get_weights())
+                else:
+                    target_weights = self.target.get_weights()
+                    online_weights = self.model.get_weights()
+                    for index in range(len(target_weights)):
+                        target_weights[index] = 0.99 * target_weights[index] + 0.01 * online_weights[index]
+                    self.target.set_weights(target_weights)
+
+            print(f"\rIteration: {iter}, Steps: {step}, FPS: {fps}, Reward:{total_reward:.1f}, Epsilon: {epsilon:.4f}, Loss: {loss}", end="")
 
         return rewards, all_loss
